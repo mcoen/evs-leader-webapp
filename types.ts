@@ -1,6 +1,6 @@
 
 export type TaskStatus = 'Not Started' | 'In Progress' | 'Complete' | 'Canceled';
-export type TaskCategory = 'EVS' | 'BioMed' | 'Engineering';
+export type TaskCategory = 'EVS' | 'BioMed' | 'Engineering' | 'Transport';
 
 export interface EVSTask {
   id: string;
@@ -117,4 +117,29 @@ export interface MaintenanceDevice {
   lastMaintenanceAction: string;
   status: 'Operational' | 'Repair Needed' | 'Out of Service';
   history: MaintenanceLog[];
+}
+
+export interface AssignedStaff {
+  name: string;
+  role: string;
+  currentTask?: string;
+  shift: string;
+  efficiency: number;
+}
+
+export interface ZoneDetail {
+  id: string;
+  name: string;
+  floor: string;
+  health: number; // 0-100
+  evsCount: number;
+  assignedStaff: AssignedStaff[];
+  history90d: number[];
+}
+
+export interface FacilityZoneCoverage {
+  facility: string;
+  overallHealth: number;
+  history90d: number[];
+  zones: ZoneDetail[];
 }

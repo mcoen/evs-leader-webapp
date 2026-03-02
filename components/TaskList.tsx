@@ -2,9 +2,9 @@
 import React, { useState, useEffect } from 'react';
 import { EVSTask, TaskStatus } from '../types';
 import { DEPARTMENTS, FACILITIES } from '../constants';
+import { CancelTaskModal } from './CancelTaskModal';
 import { 
   Plus, 
-  Trash2, 
   Search, 
   CheckCircle2, 
   Clock, 
@@ -14,7 +14,8 @@ import {
   Building2,
   MessageSquare,
   Activity,
-  ArrowUpRight
+  ArrowUpRight,
+  Ban
 } from 'lucide-react';
 
 // Sub-component for real-time elapsed time
@@ -73,6 +74,7 @@ export const TaskList: React.FC<TaskListProps> = ({
   tasks, 
   onAddTask, 
   onDeleteTask, 
+  onStatusChange,
   selectedFacility,
   setSelectedFacility,
   onMessageEmployee,
@@ -83,6 +85,9 @@ export const TaskList: React.FC<TaskListProps> = ({
   const [deptFilter, setDeptFilter] = useState<string>('All Departments');
   const [searchQuery, setSearchQuery] = useState('');
   const [activeSnapshot, setActiveSnapshot] = useState<string>('total');
+  
+  // State for task cancellation workflow
+  const [cancelingTask, setCancelingTask] = useState<EVSTask | null>(null);
 
   const filteredTasks = tasks.filter(task => {
     const matchesFacility = selectedFacility === 'All Facilities' || task.facility === selectedFacility;
@@ -138,6 +143,13 @@ export const TaskList: React.FC<TaskListProps> = ({
   ];
 
   const todayStaffHealth = 92; 
+
+  const handleCancelTask = (taskId: string, reason: string) => {
+    // In a real app, we might store the reason in the task metadata.
+    // Here we update the status to Canceled.
+    onStatusChange(taskId, 'Canceled');
+    console.log(`Task ${taskId} canceled. Reason: ${reason}`);
+  };
 
   return (
     <div className="pt-4 md:pt-8 space-y-8 animate-in slide-in-from-bottom-4 duration-500 pb-20">
@@ -359,10 +371,11 @@ export const TaskList: React.FC<TaskListProps> = ({
                           </button>
                         )}
                         <button 
-                          onClick={(e) => { e.stopPropagation(); onDeleteTask(task.id); }}
+                          onClick={(e) => { e.stopPropagation(); setCancelingTask(task); }}
+                          title="Cancel Task"
                           className="p-2 hover:bg-red-100 dark:hover:bg-red-900/20 hover:text-red-700 text-slate-700 dark:text-slate-400 transition-colors rounded-xl"
                         >
-                          <Trash2 size={18}/>
+                          <Ban size={18}/>
                         </button>
                       </div>
                     </td>
@@ -380,6 +393,13 @@ export const TaskList: React.FC<TaskListProps> = ({
           </table>
         </div>
       </div>
+
+      <CancelTaskModal 
+        task={cancelingTask}
+        isOpen={!!cancelingTask}
+        onClose={() => setCancelingTask(null)}
+        onConfirm={handleCancelTask}
+      />
     </div>
   );
 };

@@ -20,7 +20,12 @@ import {
   BrainCircuit,
   Target,
   History,
-  Activity
+  Activity,
+  UserX,
+  Scale,
+  Users,
+  CalendarDays,
+  UserMinus
 } from 'lucide-react';
 import { 
   AreaChart,
@@ -43,7 +48,7 @@ export const KPIDrilldown: React.FC<KPIDrilldownProps> = ({ kpi, tasks, onBack, 
   const [aiSuggestions, setAiSuggestions] = useState<string | null>(null);
   const [isLoadingAi, setIsLoadingAi] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [dimensions, setDimensions] = useState({ width: 0, height: 280 });
+  const [dimensions, setDimensions] = useState({ width: 0, height: 320 });
 
   // Robust Resize Observer ensures charts render even when ResponsiveContainer fails in ESM environments
   useEffect(() => {
@@ -53,7 +58,7 @@ export const KPIDrilldown: React.FC<KPIDrilldownProps> = ({ kpi, tasks, onBack, 
       if (!entries || entries.length === 0) return;
       const { width } = entries[0].contentRect;
       if (width > 0) {
-        setDimensions({ width, height: 280 });
+        setDimensions({ width, height: 320 });
       }
     });
 
@@ -62,18 +67,18 @@ export const KPIDrilldown: React.FC<KPIDrilldownProps> = ({ kpi, tasks, onBack, 
     // Initial measurement
     const initialWidth = containerRef.current.offsetWidth;
     if (initialWidth > 0) {
-      setDimensions({ width: initialWidth, height: 280 });
+      setDimensions({ width: initialWidth, height: 320 });
     }
 
     return () => resizeObserver.disconnect();
   }, []);
 
-  // Calculate a dynamic target benchmark (Lower is better for Speed/Financial)
+  // Calculate a dynamic target benchmark (Lower is better for Speed/Financial/Turnover)
   const benchmark = useMemo(() => {
     const dataPoints = kpi.sparkline || [];
     if (dataPoints.length === 0) return 0;
     const avg = dataPoints.reduce((a, b) => a + b, 0) / dataPoints.length;
-    const isLowerBetter = (kpi.category === 'Financial' || kpi.category === 'Speed');
+    const isLowerBetter = (kpi.category === 'Financial' || kpi.category === 'Speed' || kpi.id === 'k_turnover');
     return isLowerBetter ? avg * 0.85 : avg * 1.15;
   }, [kpi]);
 
@@ -84,8 +89,8 @@ export const KPIDrilldown: React.FC<KPIDrilldownProps> = ({ kpi, tasks, onBack, 
       let label = '';
       if (i === dataPoints.length - 1) label = 'Now';
       else {
-        const hoursAgo = dataPoints.length - 1 - i;
-        label = `${hoursAgo}h`;
+        const monthsAgo = dataPoints.length - 1 - i;
+        label = kpi.id === 'k_turnover' ? `${monthsAgo}m` : `${monthsAgo}h`;
       }
       return {
         name: label,
@@ -95,7 +100,17 @@ export const KPIDrilldown: React.FC<KPIDrilldownProps> = ({ kpi, tasks, onBack, 
     });
   }, [kpi, benchmark]);
 
+  // Retention and Risk specific correlated items
+  const retentionAnomalies = [
+    { id: 'R1', label: 'Burnout Risk: ICU North', sub: 'Personnel Avg Workload > 135% for 4 consecutive weeks.', icon: <UserX />, color: 'text-red-600 bg-red-50' },
+    { id: 'R2', label: 'Local Market Wage Gap', sub: 'Competitor entry rates are +$1.25/hr above facility EVS baseline.', icon: <Scale />, color: 'text-amber-600 bg-amber-50' },
+    { id: 'R3', label: 'Onboarding Lag', sub: 'New hires (30-day cohort) report 42% lower satisfaction in mentorship.', icon: <Users />, color: 'text-blue-600 bg-blue-50' },
+    { id: 'R4', label: 'Exit Trend: Night Shift', sub: 'Departure rate is 3x higher in night shift transport dept.', icon: <Clock />, color: 'text-red-600 bg-red-50' }
+  ];
+
   const anomalies = useMemo(() => {
+    if (kpi.id === 'k_turnover') return [];
+    
     const numericKpiValue = Number(kpi.value.toString().replace(/,/g, ''));
     return tasks.filter(t => {
       if (kpi.id === 'k1') return t.status === 'Complete' && t.startTime && t.endTime && (new Date(t.endTime).getTime() - new Date(t.startTime).getTime()) / 60000 > numericKpiValue;
@@ -109,11 +124,16 @@ export const KPIDrilldown: React.FC<KPIDrilldownProps> = ({ kpi, tasks, onBack, 
       setIsLoadingAi(true);
       try {
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const prompt = `Analyze this Hospital KPI: ${kpi.label}. Current: ${kpi.value}${kpi.unit || ''}. Target: ${benchmark.toFixed(1)}. Provide 3 bullet point strategies for optimization.`;
+        let prompt = `Analyze this Hospital KPI: ${kpi.label}. Current: ${kpi.value}${kpi.unit || ''}. Target: ${benchmark.toFixed(1)}. Provide 3 bullet point strategies for optimization.`;
+        
+        if (kpi.id === 'k_turnover') {
+          prompt = `Analyze Staffing Turnover Rate of ${kpi.value}%. Target is ${benchmark.toFixed(1)}%. Note that 42% of departures occur within the first year of employment. Identify potential causes (mentorship, onboarding fatigue) and suggest 3 high-impact retention strategies for a Hospital EVS/Facilities Leader specifically targeting the first-year cohort.`;
+        }
+
         const response = await ai.models.generateContent({
           model: 'gemini-3-flash-preview',
           contents: prompt,
-          config: { systemInstruction: "You are an elite hospital operations officer with expertise in throughput efficiency.", temperature: 0.5 },
+          config: { systemInstruction: "You are an elite hospital operations officer with expertise in workforce management and retention.", temperature: 0.5 },
         });
         setAiSuggestions(response.text || "Insight engine returned empty response.");
       } catch (e) {
@@ -126,7 +146,7 @@ export const KPIDrilldown: React.FC<KPIDrilldownProps> = ({ kpi, tasks, onBack, 
   }, [kpi.id, benchmark]);
 
   const isPerformingPoorly = useMemo(() => {
-    const isLowerBetter = (kpi.category === 'Financial' || kpi.category === 'Speed');
+    const isLowerBetter = (kpi.category === 'Financial' || kpi.category === 'Speed' || kpi.id === 'k_turnover');
     const val = Number(kpi.value.toString().replace(/,/g, ''));
     return isLowerBetter ? val > benchmark : val < benchmark;
   }, [kpi, benchmark]);
@@ -161,6 +181,34 @@ export const KPIDrilldown: React.FC<KPIDrilldownProps> = ({ kpi, tasks, onBack, 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Graph & Audit Section */}
         <div className="lg:col-span-2 space-y-6">
+          {/* Turnover Specific High-Impact Stat: First-Year Ratio */}
+          {kpi.id === 'k_turnover' && (
+            <div className="bg-white dark:bg-slate-900 p-8 rounded-[40px] border border-slate-200 dark:border-slate-800 shadow-xl flex flex-col md:flex-row items-center gap-8 animate-in slide-in-from-top-4 duration-500">
+               <div className="relative shrink-0">
+                  <svg className="w-24 h-24 transform -rotate-90">
+                    <circle cx="48" cy="48" r="40" stroke="currentColor" strokeWidth="8" fill="transparent" className="text-slate-100 dark:text-slate-800" />
+                    <circle cx="48" cy="48" r="40" stroke="currentColor" strokeWidth="8" fill="transparent" strokeDasharray={2 * Math.PI * 40} strokeDashoffset={2 * Math.PI * 40 * (1 - 0.42)} className="text-red-500" strokeLinecap="round" />
+                  </svg>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center">
+                    <span className="text-xl font-black text-slate-900 dark:text-white">42%</span>
+                  </div>
+               </div>
+               <div className="flex-1 space-y-2 text-center md:text-left">
+                  <h3 className="text-lg font-black text-slate-950 dark:text-white uppercase tracking-tighter flex items-center justify-center md:justify-start gap-2">
+                    <UserMinus size={20} className="text-red-500" /> Early Tenure Attrition
+                  </h3>
+                  <p className="text-sm font-bold text-slate-500 dark:text-slate-400 leading-relaxed">
+                    <strong className="text-red-600">42% of all staff departures</strong> occur within the <strong className="text-slate-900 dark:text-slate-100">first 12 months</strong> of employment. This indicates a critical need to evaluate mentorship and the 90-day "sink or swim" threshold in EVS departments.
+                  </p>
+               </div>
+               <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-3xl border border-slate-100 dark:border-slate-700 flex flex-col items-center gap-1 min-w-[120px]">
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Ratio</p>
+                  <p className="text-xl font-black text-slate-900 dark:text-white">5 : 12</p>
+                  <p className="text-[8px] font-black text-slate-400 uppercase">Leavers:Tenure</p>
+               </div>
+            </div>
+          )}
+
           <div className="bg-white dark:bg-slate-900 p-6 md:p-8 rounded-[40px] border border-slate-200 dark:border-slate-800 shadow-xl space-y-6">
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-6">
               <div className="space-y-1">
@@ -184,14 +232,14 @@ export const KPIDrilldown: React.FC<KPIDrilldownProps> = ({ kpi, tasks, onBack, 
               </div>
             </div>
 
-            {/* Reliable Chart Container with Explicit Sizing */}
-            <div ref={containerRef} className="w-full h-[280px] flex items-center justify-center bg-slate-50/50 dark:bg-slate-800/20 rounded-[32px] overflow-hidden relative border border-slate-100 dark:border-slate-800">
+            {/* Robust Chart Container - Increased height and width handling */}
+            <div ref={containerRef} className="w-full h-[320px] flex items-center justify-center bg-slate-50/50 dark:bg-slate-800/20 rounded-[32px] overflow-visible relative border border-slate-100 dark:border-slate-800 p-4">
               {dimensions.width > 0 && (
                 <AreaChart
-                  width={dimensions.width}
-                  height={dimensions.height}
+                  width={dimensions.width - 32} // Account for padding
+                  height={dimensions.height - 32}
                   data={chartData}
-                  margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
+                  margin={{ top: 20, right: 40, left: 45, bottom: 20 }}
                 >
                   <defs>
                     <linearGradient id={`grad-${kpi.id}`} x1="0" y1="0" x2="0" y2="1">
@@ -205,12 +253,14 @@ export const KPIDrilldown: React.FC<KPIDrilldownProps> = ({ kpi, tasks, onBack, 
                     axisLine={false} 
                     tickLine={false} 
                     tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 800 }} 
+                    padding={{ left: 20, right: 20 }}
                   />
                   <YAxis 
                     axisLine={false} 
                     tickLine={false} 
                     tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 800 }}
                     tickFormatter={yAxisFormatter}
+                    width={45}
                   />
                   <Tooltip 
                     contentStyle={{ borderRadius: '12px', border: 'none', backgroundColor: '#0f172a', color: '#fff', fontSize: '11px', fontWeight: 900 }}
@@ -256,25 +306,41 @@ export const KPIDrilldown: React.FC<KPIDrilldownProps> = ({ kpi, tasks, onBack, 
           <div className="bg-white dark:bg-slate-900 rounded-[40px] border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden">
             <div className="p-8 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
               <h3 className="text-xl font-black text-slate-950 dark:text-white flex items-center gap-3">
-                <AlertTriangle size={24} className="text-amber-500" /> Correlated Events
+                <AlertTriangle size={24} className="text-amber-500" /> {kpi.id === 'k_turnover' ? 'Risk Indicators' : 'Correlated Events'}
               </h3>
-              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Root Cause Audit</span>
+              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{kpi.id === 'k_turnover' ? 'Retention Audit' : 'Root Cause Audit'}</span>
             </div>
             <div className="divide-y divide-slate-50 dark:divide-slate-800">
-              {anomalies.map(task => (
-                <div key={task.id} onClick={() => onViewTask(task.id)} className="p-6 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-all cursor-pointer flex items-center justify-between group">
-                  <div className="flex items-center gap-6">
-                    <div className="w-10 h-10 rounded-xl bg-red-50 text-red-600 flex items-center justify-center">
-                      <AlertCircle size={20} />
-                    </div>
-                    <div>
-                      <p className="font-black text-slate-900 dark:text-white group-hover:text-blue-600">Room {task.roomNumber}</p>
-                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{task.category} • {task.facility}</p>
+              {kpi.id === 'k_turnover' ? (
+                retentionAnomalies.map(risk => (
+                  <div key={risk.id} className="p-6 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-all flex items-center justify-between group">
+                    <div className="flex items-center gap-6">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${risk.color}`}>
+                        {risk.icon}
+                      </div>
+                      <div>
+                        <p className="font-black text-slate-900 dark:text-white group-hover:text-blue-600">{risk.label}</p>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-relaxed">{risk.sub}</p>
+                      </div>
                     </div>
                   </div>
-                  <ArrowRight size={20} className="text-slate-300 group-hover:text-blue-600 transition-all group-hover:translate-x-1" />
-                </div>
-              ))}
+                ))
+              ) : (
+                anomalies.map(task => (
+                  <div key={task.id} onClick={() => onViewTask(task.id)} className="p-6 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-all cursor-pointer flex items-center justify-between group">
+                    <div className="flex items-center gap-6">
+                      <div className="w-10 h-10 rounded-xl bg-red-50 text-red-600 flex items-center justify-center">
+                        <AlertCircle size={20} />
+                      </div>
+                      <div>
+                        <p className="font-black text-slate-900 dark:text-white group-hover:text-blue-600">Room {task.roomNumber}</p>
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{task.category} • {task.facility}</p>
+                      </div>
+                    </div>
+                    <ArrowRight size={20} className="text-slate-300 group-hover:text-blue-600 transition-all group-hover:translate-x-1" />
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>
@@ -313,7 +379,7 @@ export const KPIDrilldown: React.FC<KPIDrilldownProps> = ({ kpi, tasks, onBack, 
             </div>
           </div>
 
-          {/* Stats Snapshot Panel - Matches Correlated Events Background (White in Light Mode) */}
+          {/* Stats Snapshot Panel */}
           <div className="bg-white dark:bg-slate-900 p-8 rounded-[40px] border border-slate-200 dark:border-slate-800 shadow-xl space-y-8">
             <h3 className="text-sm font-black uppercase tracking-widest flex items-center gap-3 text-slate-900 dark:text-white">
               <Zap size={18} className="text-blue-600" /> Stats Snapshot
@@ -321,8 +387,14 @@ export const KPIDrilldown: React.FC<KPIDrilldownProps> = ({ kpi, tasks, onBack, 
             <div className="space-y-4">
                <div className="flex justify-between items-center p-4 bg-slate-50 dark:bg-white/5 rounded-2xl border border-slate-100 dark:border-white/10">
                   <span className="text-[9px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Total Samples</span>
-                  <span className="text-xl font-black tracking-tighter text-slate-900 dark:text-white">{tasks.length}</span>
+                  <span className="text-xl font-black tracking-tighter text-slate-900 dark:text-white">{kpi.id === 'k_turnover' ? 'Annualized' : tasks.length}</span>
                </div>
+               {kpi.id === 'k_turnover' && (
+                 <div className="flex justify-between items-center p-4 bg-red-50 dark:bg-red-900/10 rounded-2xl border border-red-100 dark:border-red-900/20">
+                    <span className="text-[9px] font-black uppercase tracking-widest text-red-600 dark:text-red-400">1-Year Attrition</span>
+                    <span className="text-xl font-black tracking-tighter text-red-700 dark:text-red-300">42.0%</span>
+                 </div>
+               )}
                <div className="flex justify-between items-center p-4 bg-slate-50 dark:bg-white/5 rounded-2xl border border-slate-100 dark:border-white/10">
                   <span className="text-[9px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Net Variance</span>
                   <span className={`text-xl font-black tracking-tighter ${isPerformingPoorly ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
@@ -337,6 +409,38 @@ export const KPIDrilldown: React.FC<KPIDrilldownProps> = ({ kpi, tasks, onBack, 
                </div>
             </div>
           </div>
+
+          {/* Retention Milestone Tip (Only for Turnover) */}
+          {kpi.id === 'k_turnover' && (
+            <div className="bg-white dark:bg-slate-900 p-8 rounded-[40px] border border-slate-200 dark:border-slate-800 shadow-xl space-y-4">
+               <h4 className="text-xs font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
+                 <CalendarDays size={14} className="text-blue-600" /> Retention Benchmarks
+               </h4>
+               <div className="space-y-4">
+                  {[
+                    { label: 'Day 30', value: 92, target: 95 },
+                    { label: 'Day 90', value: 78, target: 85 },
+                    { label: 'Day 365', value: 58, target: 75 }
+                  ].map(milestone => (
+                    <div key={milestone.label} className="space-y-1.5">
+                       <div className="flex justify-between text-[10px] font-black uppercase">
+                          <span className="text-slate-500">{milestone.label} Survival</span>
+                          <span className={milestone.value < milestone.target ? 'text-red-600' : 'text-emerald-600'}>{milestone.value}%</span>
+                       </div>
+                       <div className="h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                          <div 
+                            className={`h-full ${milestone.value < milestone.target ? 'bg-red-500' : 'bg-emerald-500'}`}
+                            style={{ width: `${milestone.value}%` }}
+                          />
+                       </div>
+                    </div>
+                  ))}
+               </div>
+               <p className="text-[9px] font-bold text-slate-400 leading-relaxed mt-4 italic">
+                 "Critical dropout identified at Day 90. Evaluation of training-to-floor transition is recommended."
+               </p>
+            </div>
+          )}
         </div>
       </div>
     </div>

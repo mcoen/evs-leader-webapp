@@ -1,5 +1,5 @@
 
-import { EVSTask, KPIData, IntegrationStatus, Notification, IntegrationDetail, Asset, RoomDetail, MaintenanceDevice, MaintenanceLog } from './types';
+import { EVSTask, KPIData, IntegrationStatus, Notification, IntegrationDetail, Asset, RoomDetail, MaintenanceDevice, MaintenanceLog, FacilityZoneCoverage } from './types';
 
 export const FACILITIES = [
   "All Facilities",
@@ -14,9 +14,9 @@ export const FACILITIES = [
   "HCA Florida Westside Hospital",
   "HCA Houston Healthcare Tomball"
 ];
-export const DEPARTMENTS = ["All Departments", "EVS", "Engineering", "BioMed"];
+export const DEPARTMENTS = ["All Departments", "EVS", "Transport", "Engineering", "BioMed"];
 
-const generateSparkline = () => Array.from({ length: 20 }, () => Math.floor(Math.random() * 100));
+const generateSparkline = (points: number = 20) => Array.from({ length: points }, () => Math.floor(Math.random() * 40) + 60);
 
 const STAFF_NAMES = ["Marcus J.", "Sarah L.", "Robert D.", "Elena G.", "David W.", "Lisa K.", "Tom H.", "Nancy P.", "James B.", "Linda S.", "Kevin M.", "Julie V.", "Chris R.", "Maria Z.", "Steven T."];
 
@@ -34,7 +34,7 @@ const generateTasks = (count: number): EVSTask[] => {
     let status: any;
     let specificDate = taskDate;
     
-    if (i < 12) {
+    if (i < 40) { // Increased "In Progress" count for better map visuals
       status = 'In Progress';
       specificDate = new Date(); 
     } else {
@@ -48,7 +48,25 @@ const generateTasks = (count: number): EVSTask[] => {
       }
     }
     
-    const category: any = i % 3 === 0 ? 'EVS' : i % 3 === 1 ? 'BioMed' : 'Engineering';
+    // Categorization logic updated for Daily Cleans and Patient Transports
+    let category: any;
+    let description: string;
+    
+    const rand = i % 10;
+    if (rand < 4) {
+      category = 'EVS';
+      description = i % 2 === 0 ? 'Daily Clean' : 'Discharge Clean';
+    } else if (rand < 7) {
+      category = 'Transport';
+      description = 'Patient Transport';
+    } else if (rand < 8) {
+      category = 'BioMed';
+      description = 'Biomedical Equipment Check';
+    } else {
+      category = 'Engineering';
+      description = 'Engineering HVAC Maintenance';
+    }
+    
     const facility = FACILITIES[1 + (i % (FACILITIES.length - 1))];
     
     let assignedTo = undefined;
@@ -58,7 +76,7 @@ const generateTasks = (count: number): EVSTask[] => {
       assignedTo = STAFF_NAMES[i % STAFF_NAMES.length];
     }
     
-    const expectedDuration = 30 + (i % 6) * 15;
+    const expectedDuration = category === 'Transport' ? 20 + (i % 3) * 5 : 30 + (i % 6) * 15;
     
     let startTime;
     let endTime;
@@ -77,10 +95,10 @@ const generateTasks = (count: number): EVSTask[] => {
 
     return {
       id: `T${i + 1}`,
-      roomNumber: `${100 + (i % 200)}-${String.fromCharCode(65 + (i % 4))}`, // Reduced range to 200 to ensure more task overlap
+      roomNumber: `${100 + (i % 200)}-${String.fromCharCode(65 + (i % 4))}`, 
       category,
       facility,
-      description: `${category} Maintenance Request ${i + 1}`,
+      description,
       status,
       assignedTo,
       startTime,
@@ -94,19 +112,245 @@ const generateTasks = (count: number): EVSTask[] => {
   });
 };
 
-export const MOCK_TASKS: EVSTask[] = generateTasks(200);
+export const MOCK_TASKS: EVSTask[] = generateTasks(300); // More tasks for better density
 
-export const MOCK_ASSETS: Asset[] = [
-  { id: 'AS-101', name: 'Heart Pump 01', type: 'Heart Pump', status: 'In Use', location: { x: 22, y: 18 } },
-  { id: 'AS-102', name: 'IV Pump 42', type: 'IV Pump', status: 'Available', location: { x: 45, y: 32 } },
-  { id: 'AS-103', name: 'Heart Monitor 07', type: 'Heart Monitor', status: 'In Use', location: { x: 78, y: 14 } },
-  { id: 'AS-104', name: 'ECG Machine B', type: 'ECG', status: 'Maintenance', location: { x: 12, y: 55 } },
-  { id: 'AS-105', name: 'Ventilator 12', type: 'Ventilator', status: 'In Use', location: { x: 55, y: 68 } },
-  { id: 'AS-106', name: 'Defibrillator Unit 4', type: 'Defibrillator', status: 'Available', location: { x: 88, y: 45 } },
-  { id: 'AS-107', name: 'IV Pump 55', type: 'IV Pump', status: 'In Use', location: { x: 34, y: 82 } },
-  { id: 'AS-108', name: 'Heart Monitor 15', type: 'Heart Monitor', status: 'Available', location: { x: 62, y: 24 } },
-  { id: 'AS-109', name: 'ECG Machine A', type: 'ECG', status: 'Available', location: { x: 18, y: 75 } },
-  { id: 'AS-110', name: 'Heart Pump 03', type: 'Heart Pump', status: 'In Use', location: { x: 72, y: 60 } },
+export const MOCK_ASSETS: Asset[] = Array.from({ length: 25 }, (_, i) => {
+  const types = ['Heart Pump', 'IV Pump', 'Heart Monitor', 'ECG', 'Ventilator', 'Defibrillator'];
+  const type = types[i % types.length];
+  const statuses: ('Available' | 'In Use' | 'Maintenance')[] = ['Available', 'In Use', 'Maintenance'];
+  return {
+    id: `AS-${101 + i}`,
+    name: `${type} ${String(i + 1).padStart(2, '0')}`,
+    type,
+    status: statuses[i % 3],
+    location: { x: 10 + Math.random() * 80, y: 10 + Math.random() * 80 }
+  };
+});
+
+export const MOCK_FACILITY_ZONE_COVERAGE: FacilityZoneCoverage[] = FACILITIES.filter(f => f !== 'All Facilities').map(f => {
+  const zoneNames = ["Emergency Dept (ED)", "Operating Rooms (OR)", "ICU North", "MedSurg 4 West", "MedSurg 2 East", "Labor & Delivery", "Oncology Unit", "Pediatrics Unit"];
+  const zones = zoneNames.map((name, idx) => {
+    const evsCount = Math.floor(Math.random() * 10) + 15; // Increased staff count per zone
+    const staff = Array.from({ length: evsCount }, (_, sIdx) => ({
+      name: STAFF_NAMES[(idx + sIdx) % STAFF_NAMES.length],
+      role: "EVS Technician",
+      currentTask: Math.random() > 0.3 ? `Cleaning Room ${200 + idx}${sIdx}` : undefined,
+      shift: "Day Shift (07:00 - 15:00)",
+      efficiency: Math.floor(Math.random() * 20) + 80
+    }));
+
+    return {
+      id: `zone-${f.substring(0, 3)}-${idx}`,
+      name,
+      floor: `${Math.floor(Math.random() * 5) + 1}`,
+      health: Math.floor(Math.random() * 30) + 70,
+      evsCount,
+      assignedStaff: staff,
+      history90d: generateSparkline(90)
+    };
+  });
+  
+  const overallHealth = Math.round(zones.reduce((acc, z) => acc + z.health, 0) / zones.length);
+  
+  return {
+    facility: f,
+    overallHealth,
+    history90d: generateSparkline(90),
+    zones
+  };
+});
+
+export const KPI_OUTCOMES: KPIData[] = [
+  {
+    id: 'k_scost',
+    label: 'Supply Costs',
+    value: '84,200',
+    unit: '$',
+    trend: 3.4,
+    sparkline: [40, 45, 42, 50, 55, 60, 58, 62, 70, 75, 72, 80, 84],
+    category: 'Financial',
+    description: 'Expenditure on operational supplies over time'
+  },
+  {
+    id: 'k_ssave',
+    label: 'Supply Savings',
+    value: '12,650',
+    unit: '$',
+    trend: 15.2,
+    sparkline: [5, 8, 10, 12, 15, 18, 22, 25, 20, 28, 32, 35, 40],
+    category: 'Financial',
+    description: 'Calculated savings from inventory optimization'
+  },
+  {
+    id: 'k10',
+    label: 'Room Downtime Cost',
+    value: '12,450',
+    unit: '$',
+    trend: -8.7,
+    sparkline: generateSparkline(),
+    category: 'Financial',
+    description: 'Estimated lost revenue from delays'
+  },
+  {
+    id: 'k_deadbed',
+    label: 'Dead Bed Costs',
+    value: '45,800',
+    unit: '$',
+    trend: 12.4,
+    sparkline: generateSparkline(),
+    category: 'Financial',
+    description: 'Opportunity cost of vacant ready beds across the facility'
+  },
+  {
+    id: 'k1',
+    label: 'Mean Time to Patient Ready',
+    value: '42.5',
+    unit: 'min',
+    trend: -5.2,
+    sparkline: generateSparkline(),
+    category: 'Speed',
+    description: 'Total time from discharge to room ready'
+  },
+  {
+    id: 'k2',
+    label: 'Turnover Latency',
+    value: '8.2',
+    unit: 'min',
+    trend: 12.5,
+    sparkline: generateSparkline(),
+    category: 'Speed',
+    description: 'Dead time between assignment and start'
+  },
+  {
+    id: 'k_art',
+    label: 'Average Response Time',
+    value: '6.4',
+    unit: 'min',
+    trend: -12.3,
+    sparkline: generateSparkline(),
+    category: 'Speed',
+    description: 'Time from task creation to worker assignment'
+  },
+  {
+    id: 'k_dirty_occ',
+    label: 'Average Dirty to Occupied Time',
+    value: '54.2',
+    unit: 'min',
+    trend: -4.2,
+    sparkline: generateSparkline(),
+    category: 'Efficiency',
+    description: 'Total elapsed time from discharge to new patient admission'
+  },
+  {
+    id: 'k4',
+    label: 'Task Variance',
+    value: '14',
+    unit: '%',
+    trend: -2.3,
+    sparkline: generateSparkline(),
+    category: 'Efficiency',
+    description: 'Delta between standard and actual time'
+  },
+  {
+    id: 'k5',
+    label: 'Wrench Time',
+    value: '72',
+    unit: '%',
+    trend: 6.8,
+    sparkline: generateSparkline(),
+    category: 'Efficiency',
+    description: 'Percentage of shift spent "on task"'
+  },
+  {
+    id: 'k6',
+    label: 'Path Optimization',
+    value: '18',
+    unit: '%',
+    trend: 15.4,
+    sparkline: generateSparkline(),
+    category: 'Efficiency',
+    description: 'Reduction in travel distance'
+  },
+  {
+    id: 'k_lb',
+    label: 'Load Balancing',
+    value: '84',
+    unit: '%',
+    trend: 2.1,
+    sparkline: generateSparkline(),
+    category: 'Workforce',
+    description: 'Resource usage equality across tasks'
+  },
+  {
+    id: 'k_sched_health',
+    label: 'Schedule Health',
+    value: '92',
+    unit: '%',
+    trend: 4.8,
+    sparkline: [80, 82, 85, 84, 88, 90, 89, 91, 92, 94, 93, 92, 92],
+    category: 'Workforce',
+    description: 'Ratio of available staff to total headcount'
+  },
+  {
+    id: 'k_zone_health',
+    label: 'Zone Coverage Health',
+    value: '88',
+    unit: '%',
+    trend: 4.2,
+    sparkline: [82, 85, 84, 88, 86, 89, 90, 88, 87, 88, 89, 88, 88],
+    category: 'Workforce',
+    description: 'Overall EVS staffing distribution across critical zones'
+  },
+  {
+    id: 'k_turnover',
+    label: 'Staffing Turnover Rate',
+    value: '14.2',
+    unit: '%',
+    trend: -2.1,
+    sparkline: [18, 17, 18, 16, 15, 16, 14, 15, 14, 14, 15, 14, 14],
+    category: 'Workforce',
+    description: 'Annualized rate of staff departures across the facility.'
+  },
+  {
+    id: 'k7',
+    label: 'Asset Uptime (BioMed)',
+    value: '99.4',
+    unit: '%',
+    trend: 0.2,
+    sparkline: generateSparkline(),
+    category: 'Quality',
+    description: 'Percentage of time equipment is available'
+  },
+  {
+    id: 'k8',
+    label: 'First-Time Fix Rate',
+    value: '91',
+    unit: '%',
+    trend: 3.5,
+    sparkline: generateSparkline(),
+    category: 'Quality',
+    description: 'Issues resolved on first visit'
+  },
+  {
+    id: 'k9',
+    label: 'BioMed PM Compliance',
+    value: '100',
+    unit: '%',
+    trend: 0,
+    sparkline: generateSparkline(),
+    category: 'Quality',
+    description: 'Maintenance tasks completed on schedule'
+  },
+  {
+    id: 'k11',
+    label: 'Safety Incident Rate',
+    value: '0.12',
+    unit: '/1000h',
+    trend: -22.1,
+    sparkline: generateSparkline(),
+    category: 'Quality',
+    description: 'Correlated slips/trips/falls'
+  }
 ];
 
 const generateMaintenanceHistory = (deviceId: string): MaintenanceLog[] => {
@@ -398,178 +642,5 @@ export const MOCK_NOTIFICATIONS: Notification[] = [
     type: 'warning',
     timestamp: '14 hours ago',
     read: false
-  }
-];
-
-export const KPI_OUTCOMES: KPIData[] = [
-  {
-    id: 'k_scost',
-    label: 'Supply Costs',
-    value: '84,200',
-    unit: '$',
-    trend: 3.4,
-    sparkline: [40, 45, 42, 50, 55, 60, 58, 62, 70, 75, 72, 80, 84],
-    category: 'Financial',
-    description: 'Expenditure on operational supplies over time'
-  },
-  {
-    id: 'k_ssave',
-    label: 'Supply Savings',
-    value: '12,650',
-    unit: '$',
-    trend: 15.2,
-    sparkline: [5, 8, 10, 12, 15, 18, 22, 25, 20, 28, 32, 35, 40],
-    category: 'Financial',
-    description: 'Calculated savings from inventory optimization'
-  },
-  {
-    id: 'k10',
-    label: 'Room Downtime Cost',
-    value: '12,450',
-    unit: '$',
-    trend: -8.7,
-    sparkline: generateSparkline(),
-    category: 'Financial',
-    description: 'Estimated lost revenue from delays'
-  },
-  {
-    id: 'k_deadbed',
-    label: 'Dead Bed Costs',
-    value: '45,800',
-    unit: '$',
-    trend: 12.4,
-    sparkline: generateSparkline(),
-    category: 'Financial',
-    description: 'Opportunity cost of vacant ready beds across the facility'
-  },
-  {
-    id: 'k1',
-    label: 'Mean Time to Patient Ready',
-    value: '42.5',
-    unit: 'min',
-    trend: -5.2,
-    sparkline: generateSparkline(),
-    category: 'Speed',
-    description: 'Total time from discharge to room ready'
-  },
-  {
-    id: 'k2',
-    label: 'Turnover Latency',
-    value: '8.2',
-    unit: 'min',
-    trend: 12.5,
-    sparkline: generateSparkline(),
-    category: 'Speed',
-    description: 'Dead time between assignment and start'
-  },
-  {
-    id: 'k_art',
-    label: 'Average Response Time',
-    value: '6.4',
-    unit: 'min',
-    trend: -12.3,
-    sparkline: generateSparkline(),
-    category: 'Speed',
-    description: 'Time from task creation to worker assignment'
-  },
-  {
-    id: 'k_dirty_occ',
-    label: 'Average Dirty to Occupied Time',
-    value: '54.2',
-    unit: 'min',
-    trend: -4.2,
-    sparkline: generateSparkline(),
-    category: 'Efficiency',
-    description: 'Total elapsed time from discharge to new patient admission'
-  },
-  {
-    id: 'k4',
-    label: 'Task Variance',
-    value: '14',
-    unit: '%',
-    trend: -2.3,
-    sparkline: generateSparkline(),
-    category: 'Efficiency',
-    description: 'Delta between standard and actual time'
-  },
-  {
-    id: 'k5',
-    label: 'Wrench Time',
-    value: '72',
-    unit: '%',
-    trend: 6.8,
-    sparkline: generateSparkline(),
-    category: 'Efficiency',
-    description: 'Percentage of shift spent "on task"'
-  },
-  {
-    id: 'k6',
-    label: 'Path Optimization',
-    value: '18',
-    unit: '%',
-    trend: 15.4,
-    sparkline: generateSparkline(),
-    category: 'Efficiency',
-    description: 'Reduction in travel distance'
-  },
-  {
-    id: 'k_lb',
-    label: 'Load Balancing',
-    value: '84',
-    unit: '%',
-    trend: 2.1,
-    sparkline: generateSparkline(),
-    category: 'Workforce',
-    description: 'Resource usage equality across tasks'
-  },
-  {
-    id: 'k_sched_health',
-    label: 'Schedule Health',
-    value: '92',
-    unit: '%',
-    trend: 4.8,
-    sparkline: [80, 82, 85, 84, 88, 90, 89, 91, 92, 94, 93, 92, 92],
-    category: 'Workforce',
-    description: 'Ratio of available staff to total headcount'
-  },
-  {
-    id: 'k7',
-    label: 'Asset Uptime (BioMed)',
-    value: '99.4',
-    unit: '%',
-    trend: 0.2,
-    sparkline: generateSparkline(),
-    category: 'Quality',
-    description: 'Percentage of time equipment is available'
-  },
-  {
-    id: 'k8',
-    label: 'First-Time Fix Rate',
-    value: '91',
-    unit: '%',
-    trend: 3.5,
-    sparkline: generateSparkline(),
-    category: 'Quality',
-    description: 'Issues resolved on first visit'
-  },
-  {
-    id: 'k9',
-    label: 'BioMed PM Compliance',
-    value: '100',
-    unit: '%',
-    trend: 0,
-    sparkline: generateSparkline(),
-    category: 'Quality',
-    description: 'Maintenance tasks completed on schedule'
-  },
-  {
-    id: 'k11',
-    label: 'Safety Incident Rate',
-    value: '0.12',
-    unit: '/1000h',
-    trend: -22.1,
-    sparkline: generateSparkline(),
-    category: 'Quality',
-    description: 'Correlated slips/trips/falls'
   }
 ];

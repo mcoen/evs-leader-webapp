@@ -14,7 +14,9 @@ import {
   Building2,
   Users,
   DollarSign,
-  ArrowRight
+  ArrowRight,
+  Crosshair,
+  Truck
 } from 'lucide-react';
 
 interface DashboardProps {
@@ -46,8 +48,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
       case 'Speed': return <Zap className="text-amber-600 dark:text-yellow-400" size={20}/>;
       case 'Efficiency': return <BarChart3 className="text-blue-700 dark:text-blue-400" size={20}/>;
       case 'Quality': return <ShieldCheck className="text-green-700 dark:text-green-400" size={20}/>;
-      case 'Strategic': return <Stethoscope className="text-purple-700 dark:text-purple-400" size={20}/>;
+      case 'Strategic': return <Crosshair className="text-purple-700 dark:text-purple-400" size={20}/>;
       case 'Workforce': return <Users className="text-orange-700 dark:text-orange-400" size={20}/>;
+      case 'Transport': return <Truck className="text-indigo-600 dark:text-indigo-400" size={20}/>;
       default: return null;
     }
   };
@@ -78,7 +81,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <p className="text-slate-800 dark:text-gray-300 text-xs font-black tracking-widest uppercase">System-wide operational outcomes.</p>
           </div>
           
-          {/* Changed flex-wrap to flex-nowrap and added horizontal scroll for mobile consistency */}
           <div className="flex flex-nowrap items-center gap-3 overflow-x-auto pb-1 md:pb-0 no-scrollbar">
             <div className="flex-none flex items-center gap-2 px-4 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
               <Building2 size={18} className="text-slate-700 dark:text-gray-400" />
@@ -161,7 +163,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
         </section>
 
-        {/* Outcome Grid grouped by category */}
+        {/* Outcome Grid grouped by category - 'Strategic' removed as requested */}
         {['Speed', 'Efficiency', 'Workforce', 'Quality'].map((cat) => (
           <section key={cat} className="space-y-4">
             <h2 className="text-base font-black flex items-center gap-2 text-slate-900 dark:text-white uppercase tracking-widest">

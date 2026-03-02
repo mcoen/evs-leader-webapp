@@ -15,8 +15,10 @@ import { RoomDetails } from './components/RoomDetails.tsx';
 import { TaskModal } from './components/TaskModal.tsx';
 import { MaintenanceHistory } from './components/MaintenanceHistory.tsx';
 import { DeviceDetails } from './components/DeviceDetails.tsx';
-import { KPI_OUTCOMES, MOCK_TASKS, MOCK_INTEGRATIONS, MOCK_NOTIFICATIONS, FACILITIES, DEPARTMENTS, JCI_INTEGRATION_DETAIL, SERVICENOW_INTEGRATION_DETAIL, MOCK_ASSETS, getMockRoomDetail, MOCK_MAINTENANCE_DEVICES } from './constants.tsx';
-import { EVSTask, TaskStatus, Notification, DateFilter, KPIData, RoomDetail, MaintenanceDevice } from './types.ts';
+import { ZoneCoverageDrilldown } from './components/ZoneCoverageDrilldown.tsx';
+import { FacilityZoneDetail } from './components/FacilityZoneDetail.tsx';
+import { KPI_OUTCOMES, MOCK_TASKS, MOCK_INTEGRATIONS, MOCK_NOTIFICATIONS, FACILITIES, DEPARTMENTS, JCI_INTEGRATION_DETAIL, SERVICENOW_INTEGRATION_DETAIL, MOCK_ASSETS, getMockRoomDetail, MOCK_MAINTENANCE_DEVICES, MOCK_FACILITY_ZONE_COVERAGE } from './constants.tsx';
+import { EVSTask, TaskStatus, Notification, DateFilter, KPIData, RoomDetail, MaintenanceDevice, FacilityZoneCoverage } from './types.ts';
 import { 
   ArrowLeft, 
   Bell, 
@@ -65,12 +67,16 @@ const App: React.FC = () => {
   const [userEmail, setUserEmail] = useState('a.riveria@hca.health');
   const [userPhone, setUserPhone] = useState('+1 (555) 234-5678');
 
+  // Map Specific State
+  const [selectedMapZoneId, setSelectedMapZoneId] = useState<string>('');
+
   // Drill-down States
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [selectedNotificationId, setSelectedNotificationId] = useState<string | null>(null);
   const [selectedKpiId, setSelectedKpiId] = useState<string | null>(null);
   const [selectedRoom, setSelectedRoom] = useState<RoomDetail | null>(null);
   const [selectedDevice, setSelectedDevice] = useState<MaintenanceDevice | null>(null);
+  const [selectedFacilityZones, setSelectedFacilityZones] = useState<FacilityZoneCoverage | null>(null);
   const [previousTab, setPreviousTab] = useState<string>('tasks');
 
   useEffect(() => {
@@ -80,6 +86,20 @@ const App: React.FC = () => {
       document.documentElement.classList.remove('dark');
     }
   }, [isDarkMode]);
+
+  // When selected facility changes, reset map zone if it's not in the new facility
+  useEffect(() => {
+    if (selectedFacility === 'All Facilities') {
+      setSelectedMapZoneId('');
+      return;
+    }
+
+    const facilityData = MOCK_FACILITY_ZONE_COVERAGE.find(f => f.facility === selectedFacility);
+    if (facilityData && (!selectedMapZoneId || !facilityData.zones.find(z => z.id === selectedMapZoneId))) {
+      // We still clear it to force the user to pick a zone for the specific facility if we want "unit selected" requirement
+      setSelectedMapZoneId('');
+    }
+  }, [selectedFacility]);
 
   const filteredTasks = useMemo(() => {
     return tasks.filter(t => {
@@ -98,8 +118,8 @@ const App: React.FC = () => {
       const seed = (fIdx + 1) * 7 + (dIdx + 1) * 3 + (tIdx + 1) * 11;
       let val = Number(m.value.toString().replace(/,/g, ''));
       
-      if (m.id === 'k_lb') {
-        val = 84;
+      if (m.id === 'k_lb' || m.id === 'k_zone_health') {
+        // Keep these consistent for demo
       } else if (m.unit === '$') {
         const timeMultiplier = 1 + (tIdx * 0.8);
         const facilityScale = fIdx === 0 ? 1 : 0.2 + ((fIdx % 3) * 0.1); 
@@ -183,13 +203,22 @@ const App: React.FC = () => {
   };
 
   const handleKpiClick = (kpiId: string) => {
-    setSelectedKpiId(kpiId);
-    setActiveTab('kpi-drilldown');
+    if (kpiId === 'k_zone_health') {
+      setActiveTab('zone-coverage-drilldown');
+    } else {
+      setSelectedKpiId(kpiId);
+      setActiveTab('kpi-drilldown');
+    }
   };
 
   const handleViewDeviceDetails = (device: MaintenanceDevice) => {
     setSelectedDevice(device);
     setActiveTab('device-details');
+  };
+
+  const handleFacilityZoneClick = (facilityZones: FacilityZoneCoverage) => {
+    setSelectedFacilityZones(facilityZones);
+    setActiveTab('facility-zone-detail');
   };
 
   const renderContent = () => {
@@ -214,6 +243,17 @@ const App: React.FC = () => {
           onBack={() => setActiveTab('dashboard')} 
           onViewTask={(id) => handleViewTaskDetails(id, 'kpi-drilldown')}
         /> : null;
+      case 'zone-coverage-drilldown':
+        return <ZoneCoverageDrilldown 
+          coverageData={MOCK_FACILITY_ZONE_COVERAGE}
+          onBack={() => setActiveTab('dashboard')}
+          onFacilityClick={handleFacilityZoneClick}
+        />;
+      case 'facility-zone-detail':
+        return selectedFacilityZones ? <FacilityZoneDetail 
+          data={selectedFacilityZones}
+          onBack={() => setActiveTab('zone-coverage-drilldown')}
+        /> : null;
       case 'tasks':
         return <TaskList tasks={tasks} onAddTask={() => setIsTaskModalOpen(true)} onDeleteTask={deleteTask} onStatusChange={updateTaskStatus} selectedFacility={selectedFacility} setSelectedFacility={setSelectedFacility} onMessageEmployee={(name) => setChatRecipient(name)} onViewTaskDetails={(id) => handleViewTaskDetails(id, 'tasks')} onViewRoomDetails={handleViewRoomDetails} />;
       case 'room-details':
@@ -227,15 +267,26 @@ const App: React.FC = () => {
       case 'ai-helper':
         return <AIHelper tasks={tasks} outcomes={dynamicOutcomes} />;
       case 'task-details':
-        return selectedTask ? <TaskDetails task={selectedTask} onBack={() => setActiveTab(previousTab)} onMessageEmployee={(name) => setChatRecipient(name)} onStatusChange={updateTaskStatus} /> : null;
+        const currentTask = tasks.find(t => t.id === selectedTaskId);
+        return currentTask ? <TaskDetails task={currentTask} onBack={() => setActiveTab(previousTab)} onMessageEmployee={(name) => setChatRecipient(name)} onStatusChange={updateTaskStatus} /> : null;
       case 'map':
         return (
           <div className="pt-4 md:pt-8 space-y-6 animate-in fade-in duration-500 pb-20">
             <div>
-              <h1 className="text-3xl font-black tracking-tight text-slate-900 dark:text-white">Team Locations</h1>
-              <p className="text-slate-800 dark:text-gray-400 font-bold mt-1">Tracking operations at {selectedFacility}.</p>
+              <h1 className="text-3xl font-black tracking-tight text-slate-900 dark:text-white uppercase">Team Locations</h1>
+              <p className="text-slate-800 dark:text-gray-400 font-bold mt-1 uppercase text-[10px] tracking-widest">Tracking real-time unit health.</p>
             </div>
-            <FloorPlan tasks={filteredTasks} assets={MOCK_ASSETS} loadBalancing={lbValue} onMessageEmployee={(name) => setChatRecipient(name)} />
+            <FloorPlan 
+              tasks={filteredTasks} 
+              assets={MOCK_ASSETS} 
+              loadBalancing={lbValue} 
+              onMessageEmployee={(name) => setChatRecipient(name)} 
+              facilityCoverage={MOCK_FACILITY_ZONE_COVERAGE}
+              selectedFacility={selectedFacility}
+              onFacilityChange={setSelectedFacility}
+              selectedZoneId={selectedMapZoneId}
+              onZoneChange={setSelectedMapZoneId}
+            />
           </div>
         );
       case 'integration-jci':
@@ -300,7 +351,7 @@ const App: React.FC = () => {
                         type="text" 
                         value={userName} 
                         onChange={(e) => setUserName(e.target.value)}
-                        className="w-full bg-slate-50 dark:bg-slate-800 p-3 rounded-2xl border-none font-black text-xs text-slate-800 dark:text-white focus:ring-2 focus:ring-blue-600 outline-none"
+                        className="w-full bg-slate-50 dark:bg-slate-800 p-3 rounded-2xl border-none font-black text-sm text-slate-800 dark:text-white focus:ring-2 focus:ring-blue-600 outline-none"
                       />
                     </div>
                     <div className="space-y-2">
@@ -311,7 +362,7 @@ const App: React.FC = () => {
                         type="text" 
                         value={userRole} 
                         onChange={(e) => setUserRole(e.target.value)}
-                        className="w-full bg-slate-50 dark:bg-slate-800 p-3 rounded-2xl border-none font-black text-xs text-slate-800 dark:text-white focus:ring-2 focus:ring-blue-600 outline-none"
+                        className="w-full bg-slate-50 dark:bg-slate-800 p-3 rounded-2xl border-none font-black text-sm text-slate-800 dark:text-white focus:ring-2 focus:ring-blue-600 outline-none"
                       />
                     </div>
                     <div className="space-y-2">
@@ -322,7 +373,7 @@ const App: React.FC = () => {
                         type="email" 
                         value={userEmail} 
                         onChange={(e) => setUserEmail(e.target.value)}
-                        className="w-full bg-slate-50 dark:bg-slate-800 p-3 rounded-2xl border-none font-black text-xs text-slate-800 dark:text-white focus:ring-2 focus:ring-blue-600 outline-none"
+                        className="w-full bg-slate-50 dark:bg-slate-800 p-3 rounded-2xl border-none font-black text-sm text-slate-800 dark:text-white focus:ring-2 focus:ring-blue-600 outline-none"
                       />
                     </div>
                     <div className="space-y-2">
@@ -333,7 +384,7 @@ const App: React.FC = () => {
                         type="text" 
                         value={userPhone} 
                         onChange={(e) => setUserPhone(e.target.value)}
-                        className="w-full bg-slate-50 dark:bg-slate-800 p-3 rounded-2xl border-none font-black text-xs text-slate-800 dark:text-white focus:ring-2 focus:ring-blue-600 outline-none"
+                        className="w-full bg-slate-50 dark:bg-slate-800 p-3 rounded-2xl border-none font-black text-sm text-slate-800 dark:text-white focus:ring-2 focus:ring-blue-600 outline-none"
                       />
                     </div>
                   </div>
@@ -544,7 +595,7 @@ const App: React.FC = () => {
     }
   };
 
-  const selectedTask = useMemo(() => tasks.find(t => t.id === selectedTaskId) || null, [tasks, selectedTaskId]);
+  const currentTask = useMemo(() => tasks.find(t => t.id === selectedTaskId) || null, [tasks, selectedTaskId]);
 
   return (
     <Layout activeTab={activeTab} setActiveTab={setActiveTab} integrations={MOCK_INTEGRATIONS} notificationsCount={notifications.filter(n => !n.read).length} isDarkMode={isDarkMode} onIntegrationClick={handleIntegrationClick}>
